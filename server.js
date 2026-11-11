@@ -18,7 +18,8 @@ const DEFAULT_CODE = process.env.DEFAULT_CODE || 'ddos1j5';
 const TITLE = process.env.LANDING_TITLE || '点击咨询';
 const OG_TITLE = process.env.OG_TITLE || TITLE;
 const OG_DESC = process.env.OG_DESC || '点击下方按钮立即前往';
-const OG_IMAGE = process.env.OG_IMAGE || 'https://ld-console.lingdian.site/qr/cover.jpg';
+const OG_IMAGE_ENV = process.env.OG_IMAGE || '';
+const COVER_SRC = process.env.COVER_SRC || 'https://ld-console.lingdian.site/qr/cover.jpg';
 
 function requestJson(url) {
   return new Promise((resolve, reject) => {
@@ -54,7 +55,35 @@ function requestJson(url) {
   });
 }
 
-function page(code, noauto) {
+function requestBytes(url) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request(
+      {
+        hostname: u.hostname,
+        path: u.pathname + u.search,
+        method: 'GET',
+        timeout: 10000
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () =>
+          resolve({
+            buf: Buffer.concat(chunks),
+            type: res.headers['content-type'] || 'image/jpeg'
+          })
+        );
+      }
+    );
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function page(code, noauto, host) {
+  const ogImage = OG_IMAGE_ENV || 'https://' + (host || '') + '/api/cover.jpg';
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -65,13 +94,13 @@ function page(code, noauto) {
 <meta property="og:type" content="website">
 <meta property="og:title" content="${OG_TITLE}">
 <meta property="og:description" content="${OG_DESC}">
-<meta property="og:image" content="${OG_IMAGE}">
+<meta property="og:image" content="${ogImage}">
 <meta property="og:image:width" content="600">
 <meta property="og:image:height" content="600">
 <meta property="og:site_name" content="${OG_TITLE}">
-<meta itemprop="image" content="${OG_IMAGE}">
-<link rel="icon" href="${OG_IMAGE}">
-<link rel="apple-touch-icon" href="${OG_IMAGE}">
+<meta itemprop="image" content="${ogImage}">
+<link rel="icon" href="${ogImage}">
+<link rel="apple-touch-icon" href="${ogImage}">
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#222}
@@ -135,6 +164,21 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ ok: true, upstream: UPSTREAM, code: DEFAULT_CODE }));
   }
 
+  if (path === '/api/cover.jpg') {
+    try {
+      const img = await requestBytes(COVER_SRC);
+      res.writeHead(200, {
+        'Content-Type': img.type,
+        'Content-Length': img.buf.length,
+        'Cache-Control': 'public, max-age=3600'
+      });
+      return res.end(img.buf);
+    } catch (e) {
+      res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('cover fetch failed');
+    }
+  }
+
   if (path === '/api/target') {
     const code = (url.searchParams.get('code') || DEFAULT_CODE).trim();
     try {
@@ -153,14 +197,14 @@ const server = http.createServer(async (req, res) => {
     const code = decodeURIComponent(m[1]);
     const noauto = url.searchParams.get('noauto') === '1';
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    return res.end(page(code, noauto));
+    return res.end(page(code, noauto, req.headers.host));
   }
 
   if (path === '/api/' || path === '/api' || path === '/api/index.html') {
     const code = (url.searchParams.get('code') || DEFAULT_CODE).trim();
     const noauto = url.searchParams.get('noauto') === '1';
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    return res.end(page(code, noauto));
+    return res.end(page(code, noauto, req.headers.host));
   }
 
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -168,3 +212,4 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => console.log('listening on', PORT, 'upstream=', UPSTREAM));
+
