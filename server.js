@@ -1,38 +1,31 @@
-// 抖音云落地页服务
-// GET /api/        落地页（自动跳微信 + 二维码兜底）
-// GET /api/target  返回 weixin:// 跳转链接
-// GET /api/healthz 健康检查
+// 抖音云落地页（接入现有 jump 服务的反向代理版）
+//
+// 抖音云只负责两件事：
+//   1. 用平台域名渲染落地页（免风险提示）
+//   2. 把链接解析转发给现有 Python 服务（ld-console）
+//
+// 路由：
+//   GET /api/j/<code>        落地页（code 来自路径）
+//   GET /api/                落地页（默认 code）
+//   GET /api/target?code=xx  代理现有服务的 /j/t/<code>
+//   GET /api/healthz         健康检查
 const http = require('http');
 const https = require('https');
 
 const PORT = process.env.PORT || 8000;
-const APPID = process.env.MINI_APPID || '';
-const SECRET = process.env.MINI_SECRET || '';
-const PAGE = process.env.MINI_PAGE || 'pages/contact/contact';
-const PARAM = process.env.MINI_PARAM || 'qrcode';
-const ENV_VERSION = process.env.MINI_ENV || 'release';
-const QR_IMAGE = process.env.QR_IMAGE || '';
-const TITLE = process.env.LANDING_TITLE || '添加顾问';
-const SUB = process.env.LANDING_SUB || '点击下方按钮，在微信中打开';
+const UPSTREAM = process.env.UPSTREAM || 'https://ld-console.lingdian.site';
+const DEFAULT_CODE = process.env.DEFAULT_CODE || 'ytt';
+const TITLE = process.env.LANDING_TITLE || '点击咨询';
 
-let tokenCache = { token: '', exp: 0 };
-let linkCache = { url: '', exp: 0 };
-
-// Node 16 没有全局 fetch，这里用 https 模块实现
-function fetchJson(url, options) {
+function requestJson(url) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
-    const body = options && options.body;
-    const headers = Object.assign({}, (options && options.headers) || {});
-    if (body) {
-      headers['Content-Length'] = Buffer.byteLength(body);
-    }
     const req = https.request(
       {
         hostname: u.hostname,
         path: u.pathname + u.search,
-        method: (options && options.method) || 'GET',
-        headers: headers,
+        method: 'GET',
+        headers: { Accept: 'application/json' },
         timeout: 10000
       },
       (res) => {
@@ -47,7 +40,6 @@ function fetchJson(url, options) {
           } catch (e) {
             const err = new Error('bad json: ' + buf.slice(0, 200));
             err.status = res.statusCode;
-            err.body = buf;
             reject(err);
           }
         });
@@ -55,50 +47,11 @@ function fetchJson(url, options) {
     );
     req.on('timeout', () => req.destroy(new Error('timeout')));
     req.on('error', reject);
-    if (body) req.write(body);
     req.end();
   });
 }
 
-async function getToken() {
-  const now = Date.now();
-  if (tokenCache.token && tokenCache.exp > now) return tokenCache.token;
-  if (!APPID || !SECRET) throw new Error('missing appid/secret');
-  const url =
-    'https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=' +
-    encodeURIComponent(APPID) +
-    '&secret=' +
-    encodeURIComponent(SECRET);
-  const data = await fetchJson(url);
-  if (!data.access_token) throw new Error('token failed: ' + JSON.stringify(data));
-  tokenCache = { token: data.access_token, exp: now + (data.expires_in - 300) * 1000 };
-  return tokenCache.token;
-}
-
-async function buildScheme() {
-  const now = Date.now();
-  if (linkCache.url && linkCache.exp > now) return linkCache.url;
-
-  const token = await getToken();
-  const query = PARAM + '=' + encodeURIComponent(QR_IMAGE);
-  const jump = { path: PAGE, query: query };
-  if (['release', 'trial', 'develop'].includes(ENV_VERSION)) {
-    jump.env_version = ENV_VERSION;
-  }
-  const data = await fetchJson(
-    'https://api.weixin.qq.com/wxa/generatescheme?access_token=' + encodeURIComponent(token),
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jump_wxa: jump })
-    }
-  );
-  if (!data.openlink) throw new Error('scheme failed: ' + JSON.stringify(data));
-  linkCache = { url: data.openlink, exp: now + 60 * 1000 };
-  return linkCache.url;
-}
-
-function page(noauto) {
+function page(code, noauto) {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -117,7 +70,6 @@ function page(noauto) {
   .btn{margin-top:44px;width:100%;max-width:520px;height:56px;border:0;border-radius:28px;
        background:#4f8cff;color:#fff;font-size:19px;font-weight:500;letter-spacing:1px}
   .btn:active{background:#3d78e8}
-  .btn[disabled]{background:#a9c6ff}
   .foot{margin-top:26px;font-size:12px;color:#bbb;line-height:1.7}
   .err{margin-top:14px;font-size:12px;color:#e54d42;word-break:break-all;max-width:520px}
 </style>
@@ -133,23 +85,28 @@ function page(noauto) {
   <div class="err" id="err"></div>
 </div>
 <script>
+var CODE = ${JSON.stringify(code)};
 var TARGET = '';
-var jumped = false;
 function go(){
   if(!TARGET){
-    var el = document.getElementById('err');
-    el.textContent = '正在获取跳转地址…';
-    setTimeout(function(){ if(TARGET){ location.href = TARGET } }, 300);
+    document.getElementById('err').textContent = '正在获取跳转地址…';
     return;
   }
-  jumped = true;
   location.href = TARGET;
 }
-fetch('/api/target').then(function(r){return r.json()}).then(function(d){
-  if(d && d.target){ TARGET = d.target;
-    ${noauto ? '' : "setTimeout(function(){ if(!jumped){ try{ jumped=true; location.href = TARGET }catch(e){} } }, 1200);"}
-  } else if(d && d.error){ document.getElementById('err').textContent = d.error; }
-}).catch(function(e){ document.getElementById('err').textContent = String(e); });
+fetch('/api/target?code=' + encodeURIComponent(CODE))
+  .then(function(r){return r.json()})
+  .then(function(d){
+    if(d && d.target){
+      TARGET = d.target;
+      ${noauto ? '' : "setTimeout(function(){ try{ location.href = TARGET }catch(e){} }, 1200);"}
+    } else if(d && d.error){
+      document.getElementById('err').textContent = d.error;
+    } else {
+      document.getElementById('err').textContent = JSON.stringify(d);
+    }
+  })
+  .catch(function(e){ document.getElementById('err').textContent = String(e); });
 </script>
 </body>
 </html>`;
@@ -159,57 +116,41 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const path = url.pathname;
 
-  if (path === '/api/debug') {
-    const out = { appid: APPID ? APPID.slice(0, 6) + '...' : '', secret: SECRET ? 'set' : 'missing' };
-    try {
-      const tokenUrl =
-        'https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=' +
-        encodeURIComponent(APPID) +
-        '&secret=' +
-        encodeURIComponent(SECRET);
-      const data = await fetchJson(tokenUrl);
-      out.token = data.access_token ? 'ok' : 'no-token';
-      out.tokenResp = JSON.stringify(data).slice(0, 200);
-    } catch (e) {
-      out.error = String((e && e.message) || e);
-      out.status = e && e.status;
-      out.body = e && e.body && String(e.body).slice(0, 200);
-    }
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    return res.end(JSON.stringify(out));
-  }
-
   if (path === '/api/healthz') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ ok: true, page: PAGE, env: ENV_VERSION }));
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ ok: true, upstream: UPSTREAM, code: DEFAULT_CODE }));
   }
 
   if (path === '/api/target') {
+    const code = (url.searchParams.get('code') || DEFAULT_CODE).trim();
     try {
-      const target = await buildScheme();
+      const data = await requestJson(UPSTREAM + '/j/t/' + encodeURIComponent(code));
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      return res.end(JSON.stringify({ ok: true, target: target }));
+      return res.end(JSON.stringify(data));
     } catch (e) {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      return res.end(
-        JSON.stringify({
-          ok: false,
-          error: String((e && e.message) || e),
-          status: e && e.status,
-          body: e && e.body && String(e.body).slice(0, 300)
-        })
-      );
+      return res.end(JSON.stringify({ ok: false, error: String((e && e.message) || e) }));
     }
   }
 
-  if (path === '/api/' || path === '/api' || path === '/api/index.html') {
+  // /api/j/<code>
+  const m = path.match(/^\/api\/j\/([^/]+)\/?$/);
+  if (m) {
+    const code = decodeURIComponent(m[1]);
     const noauto = url.searchParams.get('noauto') === '1';
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    return res.end(page(noauto));
+    return res.end(page(code, noauto));
+  }
+
+  if (path === '/api/' || path === '/api' || path === '/api/index.html') {
+    const code = (url.searchParams.get('code') || DEFAULT_CODE).trim();
+    const noauto = url.searchParams.get('noauto') === '1';
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end(page(code, noauto));
   }
 
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('not found');
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log('listening on', PORT, 'page=', PAGE));
+server.listen(PORT, '0.0.0.0', () => console.log('listening on', PORT, 'upstream=', UPSTREAM));
