@@ -23,12 +23,16 @@ function fetchJson(url, options) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const body = options && options.body;
+    const headers = Object.assign({}, (options && options.headers) || {});
+    if (body) {
+      headers['Content-Length'] = Buffer.byteLength(body);
+    }
     const req = https.request(
       {
         hostname: u.hostname,
         path: u.pathname + u.search,
         method: (options && options.method) || 'GET',
-        headers: (options && options.headers) || {},
+        headers: headers,
         timeout: 10000
       },
       (res) => {
@@ -179,7 +183,14 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({ ok: true, target: target }));
     } catch (e) {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      return res.end(JSON.stringify({ ok: false, error: String(e && e.message || e) }));
+      return res.end(
+        JSON.stringify({
+          ok: false,
+          error: String((e && e.message) || e),
+          status: e && e.status,
+          body: e && e.body && String(e.body).slice(0, 300)
+        })
+      );
     }
   }
 
