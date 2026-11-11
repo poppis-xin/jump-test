@@ -107,39 +107,47 @@ function page(noauto) {
 <title>${TITLE}</title>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  body{margin:0;background:#f7f7f7;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#222}
-  .wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center}
-  .logo{width:76px;height:76px;border-radius:20px;background:#07c160;display:flex;align-items:center;justify-content:center;font-size:36px;color:#fff;font-weight:600}
-  h1{font-size:22px;margin:22px 0 8px;font-weight:600}
-  .sub{font-size:14px;color:#888;margin-bottom:28px}
-  .btn{width:100%;max-width:340px;height:52px;border:0;border-radius:26px;background:#07c160;color:#fff;font-size:17px;font-weight:600}
-  .btn:active{background:#06ad56}
-  .btn[disabled]{background:#a8e6c1}
-  .qr{margin-top:28px;width:220px;height:220px;background:#fff;border-radius:14px;padding:10px}
-  .qr img{width:100%;height:100%;object-fit:contain}
-  .tip{margin-top:18px;font-size:13px;color:#999;line-height:1.7}
-  .err{margin-top:18px;font-size:13px;color:#e54d42;line-height:1.7;word-break:break-all}
+  body{margin:0;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#222}
+  .wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:56px 28px 40px;text-align:center}
+  .safe{display:flex;align-items:center;gap:6px;font-size:14px;color:#666}
+  .safe .dot{width:16px;height:16px;border-radius:50%;background:#2fb344;color:#fff;font-size:11px;line-height:16px;text-align:center;flex:none}
+  .spacer{flex:1;min-height:80px}
+  .lead{font-size:26px;font-weight:500;letter-spacing:1px;color:#1a1a1a}
+  .hand{margin-top:18px;font-size:30px;letter-spacing:8px}
+  .btn{margin-top:44px;width:100%;max-width:520px;height:56px;border:0;border-radius:28px;
+       background:#4f8cff;color:#fff;font-size:19px;font-weight:500;letter-spacing:1px}
+  .btn:active{background:#3d78e8}
+  .btn[disabled]{background:#a9c6ff}
+  .foot{margin-top:26px;font-size:12px;color:#bbb;line-height:1.7}
+  .err{margin-top:14px;font-size:12px;color:#e54d42;word-break:break-all;max-width:520px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="logo">微</div>
-  <h1>${TITLE}</h1>
-  <div class="sub">${SUB}</div>
-  <button class="btn" id="btn" onclick="go()">打开微信</button>
-  ${QR_IMAGE ? `<div class="qr"><img id="qrimg" src="${QR_IMAGE}" alt="二维码"></div>` : ''}
-  <div class="tip">若按钮无反应，请长按上方二维码识别</div>
+  <div class="safe"><span class="dot">✓</span>本链接已经过SSL安全加密，请放心点击</div>
+  <div class="spacer"></div>
+  <div class="lead">点击下方按钮立即前往</div>
+  <div class="hand">👇👇👇</div>
+  <button class="btn" id="btn" onclick="go()">点击立即前往</button>
+  <div class="foot">如未跳转，请返回后重新点击</div>
   <div class="err" id="err"></div>
 </div>
 <script>
 var TARGET = '';
+var jumped = false;
 function go(){
-  if(!TARGET){ location.href='/api/target'; return; }
+  if(!TARGET){
+    var el = document.getElementById('err');
+    el.textContent = '正在获取跳转地址…';
+    setTimeout(function(){ if(TARGET){ location.href = TARGET } }, 300);
+    return;
+  }
+  jumped = true;
   location.href = TARGET;
 }
 fetch('/api/target').then(function(r){return r.json()}).then(function(d){
   if(d && d.target){ TARGET = d.target;
-    if(${noauto ? 'false' : 'true'}){ setTimeout(function(){ try{ location.href = TARGET }catch(e){} }, 500); }
+    ${noauto ? '' : "setTimeout(function(){ if(!jumped){ try{ jumped=true; location.href = TARGET }catch(e){} } }, 1200);"}
   } else if(d && d.error){ document.getElementById('err').textContent = d.error; }
 }).catch(function(e){ document.getElementById('err').textContent = String(e); });
 </script>
