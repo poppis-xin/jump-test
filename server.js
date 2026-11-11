@@ -16,6 +16,9 @@ const PORT = process.env.PORT || 8000;
 const UPSTREAM = process.env.UPSTREAM || 'https://hssy.site';
 const DEFAULT_CODE = process.env.DEFAULT_CODE || 'ddos1j5';
 const TITLE = process.env.LANDING_TITLE || '点击咨询';
+const OG_TITLE = process.env.OG_TITLE || TITLE;
+const OG_DESC = process.env.OG_DESC || '点击下方按钮立即前往';
+const OG_IMAGE = process.env.OG_IMAGE || 'https://ld-console.lingdian.site/qr/cover.jpg';
 
 function requestJson(url) {
   return new Promise((resolve, reject) => {
@@ -57,7 +60,18 @@ function page(code, noauto) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>${TITLE}</title>
+<title>${OG_TITLE}</title>
+<meta name="description" content="${OG_DESC}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${OG_TITLE}">
+<meta property="og:description" content="${OG_DESC}">
+<meta property="og:image" content="${OG_IMAGE}">
+<meta property="og:image:width" content="600">
+<meta property="og:image:height" content="600">
+<meta property="og:site_name" content="${OG_TITLE}">
+<meta itemprop="image" content="${OG_IMAGE}">
+<link rel="icon" href="${OG_IMAGE}">
+<link rel="apple-touch-icon" href="${OG_IMAGE}">
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:#fff;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#222}
