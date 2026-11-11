@@ -13,8 +13,8 @@ const http = require('http');
 const https = require('https');
 
 const PORT = process.env.PORT || 8000;
-const UPSTREAM = process.env.UPSTREAM || 'https://ld-console.lingdian.site';
-const DEFAULT_CODE = process.env.DEFAULT_CODE || 'ytt';
+const UPSTREAM = process.env.UPSTREAM || 'https://hssy.site';
+const DEFAULT_CODE = process.env.DEFAULT_CODE || 'ddos1j5';
 const TITLE = process.env.LANDING_TITLE || '点击咨询';
 
 function requestJson(url) {
