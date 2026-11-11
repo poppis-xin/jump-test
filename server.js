@@ -97,6 +97,11 @@ function page(code, noauto, host) {
 <meta property="og:image" content="${ogImage}">
 <meta property="og:image:width" content="600">
 <meta property="og:image:height" content="600">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:secure_url" content="${ogImage}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${ogImage}">
+<meta name="thumbnail" content="${ogImage}">
 <meta property="og:site_name" content="${OG_TITLE}">
 <meta itemprop="image" content="${ogImage}">
 <link rel="icon" href="${ogImage}">
@@ -107,6 +112,7 @@ function page(code, noauto, host) {
   .wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:56px 28px 40px;text-align:center}
   .safe{display:flex;align-items:center;gap:6px;font-size:14px;color:#666}
   .logo{width:68px;height:68px;border-radius:16px;object-fit:cover;margin-bottom:18px;display:block}
+  .hero{width:100%;max-width:520px;border-radius:18px;display:block;margin:0 0 26px;object-fit:cover}
   .safe .dot{width:16px;height:16px;border-radius:50%;background:#2fb344;color:#fff;font-size:11px;line-height:16px;text-align:center;flex:none}
   .spacer{flex:1;min-height:80px}
   .lead{font-size:26px;font-weight:500;letter-spacing:1px;color:#1a1a1a}
@@ -120,7 +126,7 @@ function page(code, noauto, host) {
 </head>
 <body>
 <div class="wrap">
-  <img class="logo" src="/api/cover.jpg" alt="">
+  <img class="hero" src="/api/cover.jpg" alt="点击咨询">
   <div class="safe"><span class="dot">✓</span>本链接已经过SSL安全加密，请放心点击</div>
   <div class="spacer"></div>
   <div class="lead">点击下方按钮立即前往</div>
