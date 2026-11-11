@@ -41,7 +41,10 @@ function fetchJson(url, options) {
           try {
             resolve(JSON.parse(buf));
           } catch (e) {
-            reject(new Error('bad json: ' + buf.slice(0, 200)));
+            const err = new Error('bad json: ' + buf.slice(0, 200));
+            err.status = res.statusCode;
+            err.body = buf;
+            reject(err);
           }
         });
       }
@@ -143,6 +146,26 @@ fetch('/api/target').then(function(r){return r.json()}).then(function(d){
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const path = url.pathname;
+
+  if (path === '/api/debug') {
+    const out = { appid: APPID ? APPID.slice(0, 6) + '...' : '', secret: SECRET ? 'set' : 'missing' };
+    try {
+      const tokenUrl =
+        'https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=' +
+        encodeURIComponent(APPID) +
+        '&secret=' +
+        encodeURIComponent(SECRET);
+      const data = await fetchJson(tokenUrl);
+      out.token = data.access_token ? 'ok' : 'no-token';
+      out.tokenResp = JSON.stringify(data).slice(0, 200);
+    } catch (e) {
+      out.error = String((e && e.message) || e);
+      out.status = e && e.status;
+      out.body = e && e.body && String(e.body).slice(0, 200);
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(out));
+  }
 
   if (path === '/api/healthz') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
