@@ -3,6 +3,7 @@
 // GET /api/target  返回 weixin:// 跳转链接
 // GET /api/healthz 健康检查
 const http = require('http');
+const https = require('https');
 
 const PORT = process.env.PORT || 8000;
 const APPID = process.env.MINI_APPID || '';
@@ -17,8 +18,39 @@ const SUB = process.env.LANDING_SUB || '点击下方按钮，在微信中打开'
 let tokenCache = { token: '', exp: 0 };
 let linkCache = { url: '', exp: 0 };
 
+// Node 16 没有全局 fetch，这里用 https 模块实现
 function fetchJson(url, options) {
-  return fetch(url, options).then((r) => r.json());
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const body = options && options.body;
+    const req = https.request(
+      {
+        hostname: u.hostname,
+        path: u.pathname + u.search,
+        method: (options && options.method) || 'GET',
+        headers: (options && options.headers) || {},
+        timeout: 10000
+      },
+      (res) => {
+        let buf = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => {
+          buf += c;
+        });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(buf));
+          } catch (e) {
+            reject(new Error('bad json: ' + buf.slice(0, 200)));
+          }
+        });
+      }
+    );
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
 }
 
 async function getToken() {
